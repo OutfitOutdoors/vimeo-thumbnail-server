@@ -32,7 +32,7 @@ throng({
   const debugRequest = debug('app:request');
   const debugCache = debug('app:cache');
 
-  const REDIS_URL = process.env.REDIS || 'redis://localhost';
+  const REDIS_URL = process.env.REDIS_URL || 'redis://localhost';
   const VIMEO_DATA_URL = 'https://vimeo.com/api/v2/video/';
   const CACHE_KEY_PREFIX = 'vimeo-thumbnail:';
 
