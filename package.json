@@ -1,0 +1,20 @@
+{
+  "name": "vimeo-thumbnail-server",
+  "version": "0.1",
+  "description": "Lite server to convert Vimeo id to thumbnail url",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ryan Schumacher <ryan@tep.io>",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.3.4",
+    "debug": "^2.2.0",
+    "express": "^4.13.4",
+    "redis": "^2.6.0-0",
+    "request": "^2.69.0",
+    "throng": "^3.0.0"
+  }
+}
