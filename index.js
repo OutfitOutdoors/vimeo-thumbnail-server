@@ -162,7 +162,7 @@ throng({
   });
 
   app.get('*', function(req, res) {
-    return res.send(`To fetch video image use the following URL: <em>${req.protocol}://${req.hostname}:${PORT}/v/<strong>VIDEO_ID</strong></em>`);
+    return res.send(`To fetch video image use the following URL: <em>${req.protocol}://${req.get('host')}/v/<strong>VIDEO_ID</strong></em>`);
   });
 
   app.listen(PORT, function () {
