@@ -1,6 +1,6 @@
 {
   "name": "vimeo-thumbnail-server",
-  "version": "0.1",
+  "version": "0.1.1",
   "description": "Lite server to convert Vimeo id to thumbnail url",
   "main": "index.js",
   "scripts": {
