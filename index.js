@@ -52,6 +52,14 @@ throng({
     console.error('Unexpected error', err);
   });
 
+  function parseOptions(query) {
+    return {
+      size: query.s || 'large',
+      sizeFallback: query.sfb === 'false' ? false : true,
+      useCache: query.c === 'false' ? false : true
+    };
+  }
+
   function getVimeoDataUrl (id) {
     return VIMEO_DATA_URL + id + '.json';
   }
@@ -96,10 +104,11 @@ throng({
     }
   }
 
-  function fetchFromCache (id) {
-    return redisClient.getAsync(CACHE_KEY_PREFIX + id)
+  function fetchFromCache (id, opts) {
+    return redisClient.getAsync(CACHE_KEY_PREFIX + id + ':' + opts.size)
       .then((res) => {
-        debugCache(`Cache found for ${id}`, res);
+        if (res) debugCache(`Cache found for ${id}`, res);
+        else debugCache(`Cache not found for ${id}`);
         return res;
       })
       .catch((err) => {
@@ -107,11 +116,40 @@ throng({
       });
   }
 
-  function saveToCache (id, url) {
-    redisClient.set(CACHE_KEY_PREFIX + id, url, (err, res) => {
-      redisClient.expireat(CACHE_KEY_PREFIX + id, parseInt((+new Date)/1000) + 2629743);
+  function saveToCache (id, opts, url) {
+    redisClient.set(CACHE_KEY_PREFIX + id + ':' + opts.size, url, (err, res) => {
+      redisClient.expireat(CACHE_KEY_PREFIX + id + ':' + opts.size, parseInt((+new Date)/1000) + 2629743);
       if (err) console.error(`Redis error on [set(${CACHE_KEY_PREFIX + id}, ${url})]:`, err);
       else debugCache(`Cached ${url} to ${CACHE_KEY_PREFIX + id}`);
+    });
+  }
+
+  function fetchVimeoJSON (id, opts, res) {
+    debugApp(`Fetching Vimeo data ${getVimeoDataUrl(id)}`);
+    request(getVimeoDataUrl(id), (requestError, requestResponse, requestBody) => {
+      debugRequest(`Error`, requestError);
+      debugRequest(`Response`, requestResponse);
+      debugRequest(`Body`, requestBody);
+      if (requestError) {
+        console.error(`Error fetching data from Vimeo api (${getVimeoDataUrl(id)})`, requestError);
+        return res.status(404).send(`Could not get data from vimeo: ${getVimeoDataUrl(id)}`);
+      } else {
+        let data = parseJson(requestBody);
+        if (!data) {
+          let response = `Recieved invalid response from Vimeo api (${getVimeoDataUrl(id)}): ${requestBody}`;
+          debugApp(response)
+          return res.status(404).send(response);
+        }
+        let imgUrl = getImgThumbnail(data, opts.size, opts.sizeFallback);
+        if (!imgUrl) {
+          let response = `Recieved invalid img url (${imgUrl}) from Vimeo api (${getVimeoDataUrl(id)})`;
+          debugApp(response)
+          return res.status(404).send(response);
+        }
+        saveToCache(id, opts, imgUrl);
+        debugApp(`Sending redirect for ${id} to ${imgUrl}`);
+        return res.redirect(301, imgUrl);
+      }
     });
   }
 
@@ -121,44 +159,22 @@ throng({
       debugApp(`Video id not a number: ${id}`);
       return res.status(400).send('Video id must be a number.');
     }
-    fetchFromCache(id)
-      .then((imgUrl) => {
-        if(!imgUrl || !imgUrl.match(/^https?:\/\//)) return Promise.reject(imgUrl);
-        debugApp(`Using cached redirect`);
-        debugApp(`Sending redirect for ${id} to ${imgUrl}`);
-        return res.redirect(301, imgUrl);
-      })
-      .catch((error) => {
-        debugCache(`Cache not found for ${id}`, error);
-        debugApp(`Fetching Vimeo data ${getVimeoDataUrl(id)}`);
-        request(getVimeoDataUrl(id), (requestError, requestResponse, requestBody) => {
-          debugRequest(`Error`, requestError);
-          debugRequest(`Response`, requestResponse);
-          debugRequest(`Body`, requestBody);
-          if (requestError) {
-            console.error(`Error fetching data from Vimeo api (${getVimeoDataUrl(id)})`, requestError);
-            return res.status(404).send(`Could not get data from vimeo: ${getVimeoDataUrl(id)}`);
-          } else {
-            let size = req.query.s || 'large';
-            let sizeFallback = req.query.sfb === 'false' ? false : true;
-            let data = parseJson(requestBody);
-            if (!data) {
-              let response = `Recieved invalid response from Vimeo api (${getVimeoDataUrl(id)}): ${requestBody}`;
-              debugApp(response)
-              return res.status(404).send(response);
-            }
-            let imgUrl = getImgThumbnail(data, size, sizeFallback);
-            if (!imgUrl) {
-              let response = `Recieved invalid img url (${imgUrl}) from Vimeo api (${getVimeoDataUrl(id)})`;
-              debugApp(response)
-              return res.status(404).send(response);
-            }
-            saveToCache(id, imgUrl);
-            debugApp(`Sending redirect for ${id} to ${imgUrl}`);
-            return res.redirect(301, imgUrl);
-          }
+    let opts = parseOptions(req.query || {});
+
+    if (opts.useCache) {
+      fetchFromCache(id, opts)
+        .then((imgUrl) => {
+          if(!imgUrl || !imgUrl.match(/^https?:\/\//)) return Promise.reject(imgUrl);
+          debugApp(`Using cached redirect`);
+          debugApp(`Sending redirect for ${id} to ${imgUrl}`);
+          return res.redirect(301, imgUrl);
+        })
+        .catch((error) => {
+          fetchVimeoJSON(id, opts, res);
         });
-      });
+      } else {
+        fetchVimeoJSON(id, opts, res);
+      }
   });
 
   app.get('*', function(req, res) {
